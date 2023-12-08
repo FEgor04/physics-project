@@ -1,9 +1,16 @@
-use bevy_panorbit_camera::{PanOrbitCameraPlugin, PanOrbitCamera};
-use bevy_egui::{egui::{self, TextBuffer, Link, Hyperlink},EguiContexts,EguiPlugin};
-use bevy::{prelude::*, window::{WindowDestroyed, WindowTheme}};
-use pdrust::{constraint::pulley::bundle::PulleyBundle, body::bundle::RigidBodyBundle};
+use bevy::{
+    prelude::*,
+    window::{WindowTheme},
+};
+use bevy_egui::{
+    egui::{self, Hyperlink},
+    EguiContexts, EguiPlugin,
+};
+use bevy_panorbit_camera::{PanOrbitCamera, PanOrbitCameraPlugin};
+use pdrust::settings::SettingsResource;
+use pdrust::{body::bundle::RigidBodyBundle, constraint::pulley::bundle::PulleyBundle};
 
-use git_version::{git_version};
+use git_version::git_version;
 const GIT_VERSION: &str = git_version!();
 
 #[derive(Resource, Debug, Component, PartialEq, Clone, Copy)]
@@ -11,7 +18,7 @@ struct DemonstrationSettings {
     pub m1: f32,
     pub m2: f32,
     pub mc: f32,
-    pub l:  f32,
+    pub l: f32,
     pub x_0: f32,
 }
 
@@ -32,64 +39,61 @@ impl Default for DemonstrationSettings {
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins.set(
-                WindowPlugin {
-                    primary_window: Some(Window {
-                        title: "physics projects".into(),
-                        resolution: (1920., 1080.,).into(),
-                        fit_canvas_to_parent: true,
-                        prevent_default_event_handling: true,
-                        window_theme: Some(WindowTheme::Dark),
-                        ..default()
-                    }),
-                    ..default()
-                }
-                ))
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            primary_window: Some(Window {
+                title: "physics projects".into(),
+                resolution: (1920., 1080.).into(),
+                fit_canvas_to_parent: true,
+                prevent_default_event_handling: true,
+                window_theme: Some(WindowTheme::Dark),
+                ..default()
+            }),
+            ..default()
+        }))
         .add_plugins(EguiPlugin)
         .add_plugins(pdrust::PDRustPlugin)
         .add_plugins(PanOrbitCameraPlugin)
         .insert_resource(DemonstrationSettings::default())
         .add_systems(Startup, setup_camera_and_light)
         .add_systems(Update, demo_settings_ui)
+        .add_systems(Update, simulation_settings_ui)
         .add_event::<RestartEvent>()
         .add_systems(Update, restart_simulation)
         .run();
 }
 
-fn setup_camera_and_light(
-    mut commands: Commands,
-    ) {
-        // light
-        commands.spawn(DirectionalLightBundle {
-            directional_light: DirectionalLight {
-                color: Color::WHITE,
-                illuminance: 10_000.0,
-                shadows_enabled: true,
-                ..Default::default()
-            },
+fn setup_camera_and_light(mut commands: Commands) {
+    // light
+    commands.spawn(DirectionalLightBundle {
+        directional_light: DirectionalLight {
+            color: Color::WHITE,
+            illuminance: 10_000.0,
+            shadows_enabled: true,
             ..Default::default()
-        });
+        },
+        ..Default::default()
+    });
 
-        // camera
-        commands.spawn((
-                Camera3dBundle {
-                    transform: Transform::from_xyz(0.0, -10.0, 30.0)
-                        .looking_at(Vec3::from_array([0.0, 0.0, 0.0]), Vec3::Y),
-                        ..default()
-                },
-                PanOrbitCamera {
-                    focus: Vec3::from_array([0.0, -10.0, 0.0]),
-                    ..default()
-                },
-                ));
+    // camera
+    commands.spawn((
+        Camera3dBundle {
+            transform: Transform::from_xyz(0.0, -10.0, 30.0)
+                .looking_at(Vec3::from_array([0.0, 0.0, 0.0]), Vec3::Y),
+            ..default()
+        },
+        PanOrbitCamera {
+            focus: Vec3::from_array([0.0, -10.0, 0.0]),
+            ..default()
+        },
+    ));
 }
 
 fn demo_settings_ui(
     mut contexts: EguiContexts,
     mut settings: ResMut<DemonstrationSettings>,
-    mut restart_event: EventWriter<RestartEvent>
-    ) {
-    egui::Window::new("Demonstration Settings").show(contexts.ctx_mut(), | ui | {
+    mut restart_event: EventWriter<RestartEvent>,
+) {
+    egui::Window::new("Demonstration Settings").show(contexts.ctx_mut(), |ui| {
         ui.add(egui::Slider::new(&mut settings.m1, 5.0..=100.0).text("m1"));
         ui.add(egui::Slider::new(&mut settings.m2, 5.0..=100.0).text("m2"));
         ui.add(egui::Slider::new(&mut settings.mc, 5.0..=100.0).text("m_c"));
@@ -101,8 +105,35 @@ fn demo_settings_ui(
 
         ui.horizontal(|ui| {
             ui.label(format!("Git version:"));
-            ui.add(Hyperlink::from_label_and_url(GIT_VERSION, format!("https://github.com/FEgor04/physics-project/tree/{}", GIT_VERSION)))
+            ui.add(Hyperlink::from_label_and_url(
+                GIT_VERSION,
+                format!(
+                    "https://github.com/FEgor04/physics-project/tree/{}",
+                    GIT_VERSION
+                ),
+            ))
         })
+    });
+}
+
+fn simulation_settings_ui(mut contexts: EguiContexts, mut settings: ResMut<SettingsResource>) {
+    egui::Window::new("Simulation Settings").show(contexts.ctx_mut(), |ui| {
+        ui.add(
+            egui::Slider::new(&mut settings.integration_substeps, 1..=32)
+                .text("Integration substeps"),
+        );
+        ui.add(
+            egui::Slider::new(&mut settings.constraints_substeps, 1..=32)
+                .text("Constraints integration substeps"),
+        );
+        ui.add(
+            egui::Slider::new(&mut settings.baumgarte_constant, 0.0..=1.0)
+                .text("Baumgarte constant"),
+        );
+        ui.add(
+            egui::Slider::new(&mut settings.slow_motion_koef, 1.0..=16.0)
+                .text("Slow Motion coefficient"),
+        );
     });
 }
 
@@ -113,8 +144,8 @@ fn restart_simulation(
     mut materials: ResMut<Assets<StandardMaterial>>,
     meshes_query: Query<Entity, With<Handle<Mesh>>>,
     settings: Res<DemonstrationSettings>,
-    ) {
-    for ev in ev_restart.iter() {
+) {
+    for _ev in ev_restart.read() {
         for e in meshes_query.iter() {
             commands.entity(e).despawn();
         }
@@ -130,7 +161,6 @@ fn restart_simulation(
 
         let pulley1_pos = Vec3::new(-half_l, 0.0, 0.0);
         let pulley2_pos = Vec3::new(half_l, 0.0, 0.0);
-
 
         let constraint_distance = 3.0 * half_l;
         let vertical_offset = constraint_distance - (b_central_pos - pulley1_pos).length();
@@ -148,7 +178,7 @@ fn restart_simulation(
             Transform::from_translation(b1_pos),
             Vec3::ZERO,
             Vec3::ZERO,
-            );
+        );
 
         let b2 = RigidBodyBundle::spawn_new_box(
             &mut commands,
@@ -161,7 +191,7 @@ fn restart_simulation(
             Transform::from_translation(b2_pos),
             Vec3::ZERO,
             Vec3::ZERO,
-            );
+        );
 
         let central_body = RigidBodyBundle::spawn_new_sphere(
             &mut commands,
@@ -172,7 +202,7 @@ fn restart_simulation(
             Transform::from_translation(b_central_pos),
             Vec3::ZERO,
             Vec3::ZERO,
-            );
+        );
 
         PulleyBundle::spawn_new(
             &mut commands,
@@ -186,7 +216,7 @@ fn restart_simulation(
             Vec3::ZERO,
             constraint_distance,
             pulley1_pos,
-            );
+        );
 
         PulleyBundle::spawn_new(
             &mut commands,
@@ -200,7 +230,7 @@ fn restart_simulation(
             Vec3::ZERO,
             constraint_distance,
             pulley2_pos,
-            );
+        );
 
         let pulley_radius = 0.25;
 
@@ -213,6 +243,5 @@ fn restart_simulation(
             transform: Transform::from_translation(equilibrium_pos),
             ..default()
         });
-
     }
 }
