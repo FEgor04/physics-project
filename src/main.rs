@@ -1,9 +1,9 @@
 use bevy_panorbit_camera::{PanOrbitCameraPlugin, PanOrbitCamera};
-use bevy_egui::{egui::{self, TextBuffer},EguiContexts,EguiPlugin};
+use bevy_egui::{egui::{self, TextBuffer, Link, Hyperlink},EguiContexts,EguiPlugin};
 use bevy::prelude::*;
 use pdrust::{constraint::pulley::bundle::PulleyBundle, body::bundle::RigidBodyBundle};
 
-use git_version::git_version;
+use git_version::{git_version};
 const GIT_VERSION: &str = git_version!();
 
 #[derive(Resource, Debug, Component, PartialEq, Clone, Copy)]
@@ -87,7 +87,10 @@ fn demo_settings_ui(
             restart_event.send(RestartEvent);
         }
 
-        ui.label(format!("Git version: {}", GIT_VERSION));
+        ui.horizontal(|ui| {
+            ui.label(format!("Git version:"));
+            ui.add(Hyperlink::from_label_and_url(GIT_VERSION, format!("https://github.com/FEgor04/physics-project/commit/{}", GIT_VERSION)))
+        })
     });
 }
 
