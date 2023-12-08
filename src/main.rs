@@ -1,6 +1,6 @@
 use bevy_panorbit_camera::{PanOrbitCameraPlugin, PanOrbitCamera};
 use bevy_egui::{egui::{self, TextBuffer, Link, Hyperlink},EguiContexts,EguiPlugin};
-use bevy::prelude::*;
+use bevy::{prelude::*, window::{WindowDestroyed, WindowTheme}};
 use pdrust::{constraint::pulley::bundle::PulleyBundle, body::bundle::RigidBodyBundle};
 
 use git_version::{git_version};
@@ -32,7 +32,19 @@ impl Default for DemonstrationSettings {
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
+        .add_plugins(DefaultPlugins.set(
+                WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "physics projects".into(),
+                        resolution: (1920., 1080.,).into(),
+                        fit_canvas_to_parent: true,
+                        prevent_default_event_handling: true,
+                        window_theme: Some(WindowTheme::Dark),
+                        ..default()
+                    }),
+                    ..default()
+                }
+                ))
         .add_plugins(EguiPlugin)
         .add_plugins(pdrust::PDRustPlugin)
         .add_plugins(PanOrbitCameraPlugin)
