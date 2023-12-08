@@ -1,0 +1,19 @@
+[package]
+name = "physics-project"
+version = "0.1.0"
+edition = "2021"
+authors = ["Egor Fedorov <fegor2004@gmail.com>"]
+
+[dependencies]
+pdrust = { path="/home/fegor04/Projects/pdrust" }
+bevy_panorbit_camera="0.9.0"
+bevy_egui = "0.23"
+git-version="0.3.8"
+
+[dependencies.bevy]
+version = "0.12.0"
+default-features = true
+
+[profile.dev.package."*"]
+opt-level=3
+
