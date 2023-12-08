@@ -89,7 +89,7 @@ fn demo_settings_ui(
 
         ui.horizontal(|ui| {
             ui.label(format!("Git version:"));
-            ui.add(Hyperlink::from_label_and_url(GIT_VERSION, format!("https://github.com/FEgor04/physics-project/commit/{}", GIT_VERSION)))
+            ui.add(Hyperlink::from_label_and_url(GIT_VERSION, format!("https://github.com/FEgor04/physics-project/tree/{}", GIT_VERSION)))
         })
     });
 }
