@@ -6,7 +6,7 @@ authors = ["Egor Fedorov <fegor2004@gmail.com>"]
 
 [dependencies]
 pdrust = { git="https://github.com/FEgor04/pdrust.git" }
-bevy_panorbit_camera="0.9.0"
+bevy_panorbit_camera={ version = "0.9.0", features=["bevy_egui"] }
 bevy_egui = "0.23"
 git-version="0.3.8"
 

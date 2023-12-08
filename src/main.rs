@@ -1,7 +1,4 @@
-use bevy::{
-    prelude::*,
-    window::{WindowTheme},
-};
+use bevy::{prelude::*, window::WindowTheme, ecs::query, render::extract_resource::ExtractResource};
 use bevy_egui::{
     egui::{self, Hyperlink},
     EguiContexts, EguiPlugin,
@@ -13,17 +10,29 @@ use pdrust::{body::bundle::RigidBodyBundle, constraint::pulley::bundle::PulleyBu
 use git_version::git_version;
 const GIT_VERSION: &str = git_version!();
 
-#[derive(Resource, Debug, Component, PartialEq, Clone, Copy)]
+#[derive(Resource, Debug, Component, PartialEq, Clone)]
 struct DemonstrationSettings {
     pub m1: f32,
     pub m2: f32,
     pub mc: f32,
     pub l: f32,
     pub x_0: f32,
+    pub enable_tracing: bool,
+    tracing_material: Option<Handle<StandardMaterial>>,
+    tracing_mesh: Option<Handle<Mesh>>,
 }
 
 #[derive(Event)]
 struct RestartEvent;
+
+#[derive(Event)]
+struct CleanTraceEvent;
+
+#[derive(Component)]
+struct LeaveTrace;
+
+#[derive(Component)]
+struct MeshTrace;
 
 impl Default for DemonstrationSettings {
     fn default() -> Self {
@@ -33,7 +42,49 @@ impl Default for DemonstrationSettings {
             mc: 10.0,
             l: 10.0,
             x_0: -5.0,
+            enable_tracing: false,
+            tracing_material: None,
+            tracing_mesh: None,
         }
+    }
+}
+
+fn leave_trace_system(
+    transforms: Query<&Transform, With<LeaveTrace>>,
+    mut settings: ResMut<DemonstrationSettings>,
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    if settings.tracing_mesh.is_none() {
+        settings.tracing_mesh = Some(meshes.add(Mesh::from(shape::UVSphere {
+            radius: 0.1,
+            ..default()
+        })));
+    }
+
+    if settings.tracing_material.is_none() {
+        settings.tracing_material = Some(materials.add(StandardMaterial {
+            base_color: Color::rgba(0.0, 1.0, 0.0, 0.5),
+            alpha_mode: AlphaMode::Add,
+            ..default()
+        }));
+    }
+
+    if !settings.enable_tracing {
+        return;
+    }
+
+    for t in &transforms {
+        commands.spawn((
+            PbrBundle {
+                mesh: settings.tracing_mesh.clone().unwrap(),
+                material: settings.tracing_material.clone().unwrap(),
+                transform: *t,
+                ..default()
+            },
+            MeshTrace,
+        ));
     }
 }
 
@@ -44,7 +95,7 @@ fn main() {
                 title: "physics projects".into(),
                 resolution: (1920., 1080.).into(),
                 fit_canvas_to_parent: true,
-                prevent_default_event_handling: true,
+                prevent_default_event_handling: false,
                 window_theme: Some(WindowTheme::Dark),
                 ..default()
             }),
@@ -53,16 +104,25 @@ fn main() {
         .add_plugins(EguiPlugin)
         .add_plugins(pdrust::PDRustPlugin)
         .add_plugins(PanOrbitCameraPlugin)
-        .insert_resource(DemonstrationSettings::default())
+        .insert_resource(DemonstrationSettings { ..default() })
+        .add_event::<RestartEvent>()
+        .add_event::<CleanTraceEvent>()
         .add_systems(Startup, setup_camera_and_light)
         .add_systems(Update, demo_settings_ui)
-        .add_systems(Update, simulation_settings_ui)
-        .add_event::<RestartEvent>()
+        .add_systems(Update, simulation_settings_ui.after(demo_settings_ui))
         .add_systems(Update, restart_simulation)
+        .add_systems(FixedUpdate, leave_trace_system)
+        .add_systems(Update, clean_trace)
         .run();
 }
 
-fn setup_camera_and_light(mut commands: Commands) {
+fn setup_camera_and_light(
+    mut commands: Commands,
+    mut restart_event: EventWriter<RestartEvent>,
+    mut sim_settings: ResMut<SettingsResource>,
+) {
+    sim_settings.integration_substeps = 32;
+    sim_settings.constraints_substeps = 32;
     // light
     commands.spawn(DirectionalLightBundle {
         directional_light: DirectionalLight {
@@ -86,19 +146,41 @@ fn setup_camera_and_light(mut commands: Commands) {
             ..default()
         },
     ));
+
+    restart_event.send(RestartEvent);
+}
+
+fn clean_trace(
+    mut clean_trace_event: EventReader<CleanTraceEvent>,
+    mut commands: Commands,
+    query: Query<Entity, With<MeshTrace>>,
+    ) {
+    for _ in clean_trace_event.read() {
+        query.for_each(|e| commands.entity(e).despawn());
+    }
 }
 
 fn demo_settings_ui(
     mut contexts: EguiContexts,
     mut settings: ResMut<DemonstrationSettings>,
     mut restart_event: EventWriter<RestartEvent>,
+    mut clean_trace_event: EventWriter<CleanTraceEvent>,
 ) {
     egui::Window::new("Demonstration Settings").show(contexts.ctx_mut(), |ui| {
+        let l = settings.l;
         ui.add(egui::Slider::new(&mut settings.m1, 5.0..=100.0).text("m1"));
         ui.add(egui::Slider::new(&mut settings.m2, 5.0..=100.0).text("m2"));
         ui.add(egui::Slider::new(&mut settings.mc, 5.0..=100.0).text("m_c"));
         ui.add(egui::Slider::new(&mut settings.l, 5.0..=20.0).text("L"));
-        ui.add(egui::Slider::new(&mut settings.x_0, -5.0..=-10.0).text("x_0"));
+        ui.add(egui::Slider::new(&mut settings.x_0, -l..=l).text("x_0"));
+        if ui.add(egui::Checkbox::new(
+            &mut settings.enable_tracing,
+            "Enable tracing (may cause severe perfomance loss!)",
+        )).clicked() {
+            if !settings.enable_tracing {
+                clean_trace_event.send(CleanTraceEvent);
+            }
+        };
         if ui.button("Start").clicked() {
             restart_event.send(RestartEvent);
         }
@@ -127,7 +209,7 @@ fn simulation_settings_ui(mut contexts: EguiContexts, mut settings: ResMut<Setti
                 .text("Constraints integration substeps"),
         );
         ui.add(
-            egui::Slider::new(&mut settings.baumgarte_constant, 0.0..=1.0)
+            egui::Slider::new(&mut settings.baumgarte_constant, 0.0..=0.1)
                 .text("Baumgarte constant"),
         );
         ui.add(
@@ -203,6 +285,7 @@ fn restart_simulation(
             Vec3::ZERO,
             Vec3::ZERO,
         );
+        commands.entity(central_body).insert(LeaveTrace);
 
         PulleyBundle::spawn_new(
             &mut commands,
